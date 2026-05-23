@@ -1,41 +1,70 @@
-DATABASE = []
+from motor.motor_asyncio import (
+    AsyncIOMotorClient
+)
+
+from config import MONGO_URI
+
+mongo = AsyncIOMotorClient(
+    MONGO_URI
+)
+
+db = mongo["gsm_bot"]
+
+solutions = db["solutions"]
+
+users = db["users"]
+
+banned = db["banned"]
+
+settings = db["settings"]
 
 
-async def load_database(app):
+async def add_user(user_id):
 
-    print("Database Ready")
+    if not await users.find_one({
+        "user_id": user_id
+    }):
+
+        await users.insert_one({
+            "user_id": user_id
+        })
 
 
-async def add_solution(
-    model,
-    issue,
-    keywords,
-    solution,
-    photo=None
-):
+async def is_banned(user_id):
 
-    DATABASE.append({
-        "model": model.lower(),
-        "issue": issue.lower(),
-        "keywords": keywords.lower(),
-        "solution": solution,
-        "photo": photo
+    user = await banned.find_one({
+        "user_id": user_id
     })
+
+    return bool(user)
 
 
 async def search_solution(query):
 
-    query = query.lower()
+    return await solutions.find_one({
 
-    for item in DATABASE:
+        "$or": [
 
-        compare = f"""
-        {item['model']}
-        {item['issue']}
-        {item['keywords']}
-        """
+            {
+                "model": {
+                    "$regex": query,
+                    "$options": "i"
+                }
+            },
 
-        if query in compare:
-            return item
+            {
+                "issue": {
+                    "$regex": query,
+                    "$options": "i"
+                }
+            },
 
-    return None
+            {
+                "keywords": {
+                    "$regex": query,
+                    "$options": "i"
+                }
+            }
+
+        ]
+    })
