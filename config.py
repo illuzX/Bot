@@ -10,4 +10,4 @@ FORCE_SUB_LINK = os.getenv("FORCE_SUB_LINK")
 LOG_CHANNEL = int(os.getenv("LOG_CHANNEL"))
 DB_CHANNEL = int(os.getenv("DB_CHANNEL"))
 
-ADMINS = [123456789]
+ADMINS = [681308121]
