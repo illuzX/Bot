@@ -1,54 +1,90 @@
 from pyrogram import filters
 
-from config import ADMINS
-from utils.helpers import load_banned, save_banned
+from pyrogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
-def admin_filter(_, __, message):
+from config import *
 
-    return message.from_user.id in ADMINS
+from utils.database import (
+    add_user,
+    is_banned
+)
 
-admin = filters.create(admin_filter)
 
-def register_admin(app):
+def register_start(app):
 
-    @app.on_message(filters.command("ban") & admin)
-    async def ban_user(client, message):
+    @app.on_message(
+        filters.command("start")
+    )
+    async def start(_, message):
 
-        if len(message.command) < 2:
-            return await message.reply_text(
-                "Usage: /ban user_id"
+        user_id = message.from_user.id
+
+        if await is_banned(user_id):
+
+            return await message.reply(
+                "You are banned."
             )
 
-        user_id = int(message.command[1])
+        try:
 
-        banned = load_banned()
-
-        if user_id not in banned:
-            banned.append(user_id)
-
-        save_banned(banned)
-
-        await message.reply_text(
-            f"Banned: {user_id}"
-        )
-
-    @app.on_message(filters.command("unban") & admin)
-    async def unban_user(client, message):
-
-        if len(message.command) < 2:
-            return await message.reply_text(
-                "Usage: /unban user_id"
+            member = await app.get_chat_member(
+                FORCE_SUB_CHANNEL,
+                user_id
             )
 
-        user_id = int(message.command[1])
+            if member.status in [
+                "left",
+                "kicked"
+            ]:
+                raise Exception
 
-        banned = load_banned()
+        except:
 
-        if user_id in banned:
-            banned.remove(user_id)
+            return await message.reply(
+                "Join channel first.",
+                reply_markup=InlineKeyboardMarkup(
+                    [[
+                        InlineKeyboardButton(
+                            "Join Channel",
+                            url=FORCE_SUB_LINK
+                        )
+                    ]]
+                )
+            )
 
-        save_banned(banned)
+        await add_user(user_id)
 
-        await message.reply_text(
-            f"Unbanned: {user_id}"
+        buttons = InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "📚 Common Issues",
+                    callback_data="common"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "📞 Admin",
+                    url="https://t.me/yourusername"
+                )
+            ]
+
+        ])
+
+        await message.reply(
+            """
+📱 Advanced GSM Technical Support Bot
+
+Send:
+• Mobile Model
+• Complaint
+• Board Issue
+• PMIC Issue
+• Signal Issue
+""",
+            reply_markup=buttons
         )
