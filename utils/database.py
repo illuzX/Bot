@@ -4,20 +4,42 @@ from config import DB_CHANNEL
 DATABASE = []
 
 async def load_database(app):
+
     DATABASE.clear()
 
-    async for msg in app.get_chat_history(DB_CHANNEL):
+    async for msg in app.search_messages(
+        DB_CHANNEL,
+        ""
+    ):
 
         if not msg.caption:
             continue
 
         try:
+
             text = msg.caption.lower()
 
-            model = text.split("model:")[1].split("\n")[0].strip()
-            issue = text.split("issue:")[1].split("\n")[0].strip()
-            keywords = text.split("keywords:")[1].split("\n")[0].strip()
-            solution = text.split("solution:")[1].strip()
+            model = text.split(
+                "model:"
+            )[1].split(
+                "\\n"
+            )[0].strip()
+
+            issue = text.split(
+                "issue:"
+            )[1].split(
+                "\\n"
+            )[0].strip()
+
+            keywords = text.split(
+                "keywords:"
+            )[1].split(
+                "\\n"
+            )[0].strip()
+
+            solution = text.split(
+                "solution:"
+            )[1].strip()
 
             DATABASE.append({
                 "model": model,
@@ -31,6 +53,7 @@ async def load_database(app):
             continue
 
     print(f"Loaded {len(DATABASE)} Solutions")
+
 
 async def search_solution(query):
 
