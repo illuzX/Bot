@@ -1,83 +1,108 @@
 from pyrogram import filters
 
-from utils.database import search_solution
-from utils.logger import log_query
-from utils.helpers import is_banned
+from config import LOG_CHANNEL
 
-from handlers.force_sub import (
-    check_fsub,
-    join_button
+from utils.database import (
+    is_banned
 )
+
+from utils.search import smart_search
+
+from utils.cache import CACHE
+
+from utils.spam import anti_spam
+
 
 def register_support(app):
 
     @app.on_message(
-        filters.private &
-        filters.text
+        filters.text &
+        ~filters.command([
+            "start",
+            "add",
+            "ban",
+            "unban",
+            "stats",
+            "broadcast"
+        ])
     )
-    async def support_system(client, message):
+    async def support(_, message):
 
-        user = message.from_user
+        user_id = message.from_user.id
+
+        if not anti_spam(user_id):
+
+            return await message.reply(
+                "Slow down."
+            )
+
+        if await is_banned(user_id):
+
+            return await message.reply(
+                "You are banned."
+            )
+
         query = message.text
 
-        if is_banned(user.id):
+        if query in CACHE:
 
-            return await message.reply_text(
-                "You are banned from using this bot."
-            )
-
-        joined = await check_fsub(
-            client,
-            user.id
-        )
-
-        if not joined:
-
-            return await message.reply_text(
-                "Please join our updates channel first.",
-                reply_markup=join_button()
-            )
-
-        result = await search_solution(query)
-
-        if not result:
-
-            reply = '''
-No Solution Found.
-
-Try:
-• Exact Model
-• Exact Complaint
-• Detailed Query
-'''
-
-            await message.reply_text(reply)
-
-            await log_query(
-                client,
-                user,
-                query,
-                reply
-            )
-
-            return
-
-        solution = result["solution"]
-
-        if result["photo"]:
-
-            await message.reply_photo(
-                result["photo"],
-                caption=solution
-            )
+            data = CACHE[query]
 
         else:
 
-            await message.reply_text(solution)
+            data = await smart_search(query)
 
-        await log_query(
-            client,
-            user,
-            query,
-            solution
+            CACHE[query] = data
+
+        if not data:
+
+            reply = """
+❌ No solution found.
+
+Try:
+• Exact model
+• Short complaint
+• Different keyword
+"""
+
+            await message.reply(reply)
+
+        else:
+
+            text = f"""
+📱 Model:
+{data.get("model")}
+
+⚠️ Issue:
+{data.get("issue")}
+
+🛠 Solution:
+{data.get("solution")}
+"""
+
+            if data.get("photo"):
+
+                await message.reply_photo(
+                    data["photo"],
+                    caption=text
+                )
+
+            else:
+
+                await message.reply(text)
+
+            reply = text
+
+        await app.send_message(
+            LOG_CHANNEL,
+            f"""
+👤 USER:
+{message.from_user.mention}
+
+📩 QUERY:
+{query}
+
+🤖 REPLY:
+{reply}
+"""
         )
