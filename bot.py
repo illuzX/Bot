@@ -9,49 +9,48 @@ from config import *
 from handlers.start import register_start
 from handlers.support import register_support
 from handlers.admin import register_admin
+from handlers.callbacks import register_callbacks
+from handlers.inline import register_inline
 
-from utils.database import load_database
-
-# ---------------- WEB SERVER ---------------- #
+# ---------------- WEB ---------------- #
 
 web = Flask(__name__)
 
 @web.route("/")
 def home():
-    return "Bot Running"
+    return "Advanced GSM Bot Running"
 
 def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    web.run(host="0.0.0.0", port=port)
+
+    port = int(
+        os.environ.get("PORT", 8000)
+    )
+
+    web.run(
+        host="0.0.0.0",
+        port=port
+    )
 
 Thread(target=run_web).start()
 
-# ---------------- TELEGRAM BOT ---------------- #
+# ---------------- BOT ---------------- #
 
 app = Client(
-    "MobileSupportBot",
+    "AdvancedGSMSupportBot",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN
 )
 
-async def startup():
-
-    print("Loading Database...")
-
-    await load_database(app)
-
-    register_start(app)
-    register_support(app)
-    register_admin(app)
-
-    print("Bot Started Successfully.")
+register_start(app)
+register_support(app)
+register_admin(app)
+register_callbacks(app)
+register_inline(app)
 
 app.start()
 
-app.loop.run_until_complete(
-    startup()
-)
+print("BOT STARTED")
 
 idle()
 
