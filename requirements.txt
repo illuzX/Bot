@@ -1,4 +1,13 @@
-pyrogram==2.0.106
+pyrogram
 tgcrypto
-aiofiles
 flask
+motor
+pymongo
+dnspython
+cachetools
+rapidfuzz
+SpeechRecognition
+pydub
+pytesseract
+Pillow
+apscheduler
