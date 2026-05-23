@@ -1,9 +1,9 @@
-pyrogram
+pyrogram==2.0.106
 tgcrypto
 flask
-motor
-pymongo
-dnspython
+motor==3.3.2
+pymongo==4.6.1
+dnspython==2.6.1
 cachetools
 rapidfuzz
 SpeechRecognition
@@ -11,3 +11,4 @@ pydub
 pytesseract
 Pillow
 apscheduler
+certifi
