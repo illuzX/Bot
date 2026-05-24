@@ -4,11 +4,9 @@ import threading
 
 from flask import Flask
 from pyrogram import Client, filters
-from pyrogram.types import (
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
-)
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import UserNotParticipant
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
@@ -24,10 +22,9 @@ MONGO_URI = os.getenv("MONGO_URI")
 
 LOG_CHANNEL = int(os.getenv("LOG_CHANNEL"))
 
-# username matram
-FORCE_SUB_CHANNEL = os.getenv("FORCE_SUB_CHANNEL").replace("@", "")
-
-AUTO_DELETE_TIME = 30
+FORCE_SUB_CHANNEL = os.getenv(
+    "FORCE_SUB_CHANNEL"
+).replace("@", "")
 
 # ================= DATABASE =================
 
@@ -52,24 +49,9 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot Running Successfully!"
+    return "Bot Running!"
 
-# ================= HELPERS =================
-
-async def add_user(user_id):
-
-    user = await users.find_one({
-        "user_id": user_id
-    })
-
-    if not user:
-
-        await users.insert_one({
-            "user_id": user_id
-        })
-
-
-# ===== FORCE SUB CHECK =====
+# ================= FORCE SUB =================
 
 async def is_joined(user_id):
 
@@ -80,15 +62,15 @@ async def is_joined(user_id):
             user_id
         )
 
-        print(member.status)
-
-        # LEFT / BANNED mathram reject cheyyu
-        if str(member.status) in [
-            "ChatMemberStatus.BANNED",
+        banned_status = [
             "ChatMemberStatus.LEFT",
-            "banned",
-            "left"
-        ]:
+            "ChatMemberStatus.BANNED",
+            "left",
+            "kicked",
+            "banned"
+        ]
+
+        if str(member.status) in banned_status:
             return False
 
         return True
@@ -97,50 +79,10 @@ async def is_joined(user_id):
         return False
 
     except Exception as e:
+
         print(f"ForceSub Error: {e}")
+
         return True
-
-
-# ===== FORCE SUB MESSAGE =====
-
-async def force_sub_message(message):
-
-    buttons = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "📢 JOIN CHANNEL",
-                    url=f"https://t.me/{FORCE_SUB_CHANNEL}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "✅ TRY AGAIN",
-                    callback_data="checksub"
-                )
-            ]
-        ]
-    )
-
-    return await message.reply_text(
-        "⚠️ Please Join Our Updates Channel First!",
-        reply_markup=buttons
-    )
-
-
-# ===== LOGS =====
-
-async def log_message(text):
-
-    try:
-
-        await bot.send_message(
-            LOG_CHANNEL,
-            text
-        )
-
-    except Exception as e:
-        print(f"Log Error: {e}")
 
 # ================= START =================
 
@@ -155,190 +97,86 @@ async def start_handler(client, message):
     joined = await is_joined(user_id)
 
     if not joined:
-        return await force_sub_message(message)
 
-    await add_user(user_id)
-
-    await log_message(
-        f"""
-🆕 New User
-
-👤 {message.from_user.first_name}
-🆔 {user_id}
-"""
-    )
-
-    buttons = InlineKeyboardMarkup(
-        [
+        buttons = InlineKeyboardMarkup(
             [
-                InlineKeyboardButton(
-                    "🤖 AI CHAT",
-                    callback_data="ai_chat"
-                ),
-
-                InlineKeyboardButton(
-                    "📚 HELP",
-                    callback_data="help"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    "🛠 SUPPORT",
-                    callback_data="support"
-                )
+                [
+                    InlineKeyboardButton(
+                        "📢 JOIN CHANNEL",
+                        url=f"https://t.me/{FORCE_SUB_CHANNEL}"
+                    )
+                ]
             ]
-        ]
-    )
+        )
+
+        return await message.reply_text(
+            "⚠️ Join Channel First",
+            reply_markup=buttons
+        )
 
     await message.reply_text(
         f"""
 👋 Hello {message.from_user.first_name}
 
-Welcome To Technician AI Bot
-""",
-        reply_markup=buttons
+✅ Bot Working Properly
+"""
     )
 
-# ================= CALLBACKS =================
+# ================= AI =================
 
-@bot.on_callback_query()
-async def callbacks(client, query):
+@bot.on_message(
+    filters.private &
+    filters.text &
+    ~filters.command(["start"])
+)
+async def ai_handler(client, message):
 
-    data = query.data
+    if not message.from_user:
+        return
 
-    # ===== CHECK SUB =====
+    text = message.text.lower()
 
-    if data == "checksub":
-
-        joined = await is_joined(query.from_user.id)
-
-        if joined:
-
-            return await query.message.edit_text(
-                "✅ Access Granted!\n\nSend /start"
-            )
-
-        else:
-
-            return await query.answer(
-                "❌ Join Channel First",
-                show_alert=True
-            )
-
-    # ===== AI CHAT =====
-
-    elif data == "ai_chat":
+    if "charging" in text:
 
         buttons = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        "⬅️ BACK",
-                        callback_data="back_home"
-                    )
-                ]
-            ]
-        )
-
-        await query.message.edit_text(
-            """
-🤖 Send Your Issue
-
-Example:
-Samsung A13 No Charging
-""",
-            reply_markup=buttons
-        )
-
-    # ===== HELP =====
-
-    elif data == "help":
-
-        buttons = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "⬅️ BACK",
-                        callback_data="back_home"
-                    )
-                ]
-            ]
-        )
-
-        await query.message.edit_text(
-            """
-📚 Supported Issues
-
-• Charging
-• Dead
-• Restart
-• No Display
-• Short
-""",
-            reply_markup=buttons
-        )
-
-    # ===== SUPPORT =====
-
-    elif data == "support":
-
-        buttons = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "⬅️ BACK",
-                        callback_data="back_home"
-                    )
-                ]
-            ]
-        )
-
-        await query.message.edit_text(
-            """
-🛠 Support
-
-Contact Admin:
-@yourusername
-""",
-            reply_markup=buttons
-        )
-
-    # ===== BACK =====
-
-    elif data == "back_home":
-
-        buttons = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "🤖 AI CHAT",
-                        callback_data="ai_chat"
+                        "YES",
+                        callback_data="charge_yes"
                     ),
 
                     InlineKeyboardButton(
-                        "📚 HELP",
-                        callback_data="help"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🛠 SUPPORT",
-                        callback_data="support"
+                        "NO",
+                        callback_data="charge_no"
                     )
                 ]
             ]
         )
 
-        await query.message.edit_text(
-            "🏠 Home Menu",
+        return await message.reply_text(
+            """
+🔍 Step 1
+
+6 Port Amp Edukkundo?
+""",
             reply_markup=buttons
         )
 
-    # ===== CHARGING FLOW =====
+    else:
 
-    elif data == "charge_yes":
+        return await message.reply_text(
+            "🤖 AI Learning..."
+        )
+
+# ================= CALLBACK =================
+
+@bot.on_callback_query()
+async def callback_handler(client, query):
+
+    data = query.data
+
+    if data == "charge_yes":
 
         await query.message.edit_text(
             """
@@ -354,90 +192,22 @@ Battery Percentage Increasing Undo?
             """
 🔍 Step 2
 
-Check CC Line Voltage
+Check CC Line
 """
         )
 
-# ================= AI =================
-
-@bot.on_message(filters.private & filters.text & ~filters.command(["start"]))
-async def ai_handler(client, message):
-
-    try:
-
-        if not message.from_user:
-            return
-
-        user_id = message.from_user.id
-
-        joined = await is_joined(user_id)
-
-        if not joined:
-            return await force_sub_message(message)
-
-        text = message.text.lower()
-
-        await log_message(
-            f"""
-💬 New Message
-
-👤 {message.from_user.first_name}
-🆔 {user_id}
-
-📩 {text}
-"""
-        )
-
-        # ===== CHARGING =====
-
-        if "charging" in text:
-
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "YES",
-                            callback_data="charge_yes"
-                        ),
-
-                        InlineKeyboardButton(
-                            "NO",
-                            callback_data="charge_no"
-                        )
-                    ]
-                ]
-            )
-
-            await message.reply_text(
-                """
-🔍 Step 1
-
-6 Port Amp Edukkundo?
-""",
-                reply_markup=buttons
-            )
-
-        else:
-
-            await message.reply_text(
-                """
-🤖 AI Learning Mode
-
-Try Detailed Issue
-"""
-            )
-
-    except Exception as e:
-        print(f"AI ERROR: {e}")
-
-# ================= RUN =================
+# ================= FLASK THREAD =================
 
 def run_flask():
 
     app.run(
         host="0.0.0.0",
-        port=8000
+        port=8000,
+        debug=False,
+        use_reloader=False
     )
+
+# ================= MAIN =================
 
 async def main():
 
@@ -445,11 +215,15 @@ async def main():
         target=run_flask
     ).start()
 
+    print("Starting Bot...")
+
     await bot.start()
 
     print("Bot Started Successfully!")
 
-    await asyncio.Event().wait()
+    await idle()
+
+from pyrogram.idle import idle
 
 if __name__ == "__main__":
 
