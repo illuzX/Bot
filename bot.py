@@ -493,15 +493,18 @@ Check CC Line Voltage
 
 # ================= RUN =================
 
-async def main():
+if __name__ == "__main__":
 
-    await bot.start()
+    from threading import Thread
+
+    def web():
+        app.run(
+            host="0.0.0.0",
+            port=8000
+        )
+
+    Thread(target=web).start()
 
     print("Bot Started Successfully!")
 
-    app.run(
-        host="0.0.0.0",
-        port=8000
-    )
-
-asyncio.run(main())
+    bot.run()
