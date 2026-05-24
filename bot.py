@@ -1,37 +1,30 @@
 import os
 import asyncio
-from threading import Thread
+import threading
 
 from flask import Flask
-
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
-
 from pyrogram.errors import UserNotParticipant
-
 from motor.motor_asyncio import AsyncIOMotorClient
-
 from dotenv import load_dotenv
-
-# ================= LOAD ENV =================
 
 load_dotenv()
 
 # ================= CONFIG =================
 
 API_ID = int(os.getenv("API_ID"))
-
 API_HASH = os.getenv("API_HASH")
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 MONGO_URI = os.getenv("MONGO_URI")
 
 LOG_CHANNEL = int(os.getenv("LOG_CHANNEL"))
 
+# username matram
 FORCE_SUB_CHANNEL = os.getenv("FORCE_SUB_CHANNEL").replace("@", "")
 
 AUTO_DELETE_TIME = 30
@@ -65,25 +58,77 @@ def home():
 
 async def add_user(user_id):
 
+    user = await users.find_one({
+        "user_id": user_id
+    })
+
+    if not user:
+
+        await users.insert_one({
+            "user_id": user_id
+        })
+
+
+# ===== FORCE SUB CHECK =====
+
+async def is_joined(user_id):
+
     try:
 
-        user = await users.find_one(
-            {"user_id": user_id}
+        member = await bot.get_chat_member(
+            FORCE_SUB_CHANNEL,
+            user_id
         )
 
-        if not user:
+        print(member.status)
 
-            await users.insert_one(
-                {
-                    "user_id": user_id
-                }
-            )
+        # LEFT / BANNED mathram reject cheyyu
+        if str(member.status) in [
+            "ChatMemberStatus.BANNED",
+            "ChatMemberStatus.LEFT",
+            "banned",
+            "left"
+        ]:
+            return False
+
+        return True
+
+    except UserNotParticipant:
+        return False
 
     except Exception as e:
+        print(f"ForceSub Error: {e}")
+        return True
 
-        print(f"Add User Error: {e}")
 
-# ================= LOGS =================
+# ===== FORCE SUB MESSAGE =====
+
+async def force_sub_message(message):
+
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📢 JOIN CHANNEL",
+                    url=f"https://t.me/{FORCE_SUB_CHANNEL}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "✅ TRY AGAIN",
+                    callback_data="checksub"
+                )
+            ]
+        ]
+    )
+
+    return await message.reply_text(
+        "⚠️ Please Join Our Updates Channel First!",
+        reply_markup=buttons
+    )
+
+
+# ===== LOGS =====
 
 async def log_message(text):
 
@@ -95,103 +140,173 @@ async def log_message(text):
         )
 
     except Exception as e:
-
         print(f"Log Error: {e}")
 
-# ================= FORCE SUB =================
+# ================= START =================
 
-async def is_joined(user_id):
+@bot.on_message(filters.private & filters.command("start"))
+async def start_handler(client, message):
 
-    try:
+    if not message.from_user:
+        return
 
-        member = await bot.get_chat_member(
-            chat_id=f"@{FORCE_SUB_CHANNEL}",
-            user_id=user_id
-        )
+    user_id = message.from_user.id
 
-        if member.status in [
-            "member",
-            "administrator",
-            "creator"
-        ]:
-            return True
+    joined = await is_joined(user_id)
 
-        return False
+    if not joined:
+        return await force_sub_message(message)
 
-    except UserNotParticipant:
+    await add_user(user_id)
 
-        return False
+    await log_message(
+        f"""
+🆕 New User
 
-    except Exception as e:
-
-        print(f"ForceSub Error: {e}")
-
-        return False
-
-
-async def force_sub_message(message):
+👤 {message.from_user.first_name}
+🆔 {user_id}
+"""
+    )
 
     buttons = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "📢 Join Channel",
-                    url=f"https://t.me/{FORCE_SUB_CHANNEL}"
+                    "🤖 AI CHAT",
+                    callback_data="ai_chat"
+                ),
+
+                InlineKeyboardButton(
+                    "📚 HELP",
+                    callback_data="help"
                 )
             ],
+
             [
                 InlineKeyboardButton(
-                    "✅ Try Again",
-                    callback_data="checksub"
+                    "🛠 SUPPORT",
+                    callback_data="support"
                 )
             ]
         ]
     )
 
-    msg = await message.reply_text(
-        "⚠️ Please Join Our Channel First!",
+    await message.reply_text(
+        f"""
+👋 Hello {message.from_user.first_name}
+
+Welcome To Technician AI Bot
+""",
         reply_markup=buttons
     )
 
-    await asyncio.sleep(AUTO_DELETE_TIME)
+# ================= CALLBACKS =================
 
-    try:
-        await msg.delete()
-    except:
-        pass
+@bot.on_callback_query()
+async def callbacks(client, query):
 
-# ================= START =================
+    data = query.data
 
-@bot.on_message(
-    filters.private &
-    filters.command("start")
-)
-async def start_handler(client, message):
+    # ===== CHECK SUB =====
 
-    try:
+    if data == "checksub":
 
-        if not message.from_user:
-            return
+        joined = await is_joined(query.from_user.id)
 
-        user_id = message.from_user.id
+        if joined:
 
-        joined = await is_joined(user_id)
+            return await query.message.edit_text(
+                "✅ Access Granted!\n\nSend /start"
+            )
 
-        if not joined:
+        else:
 
-            return await force_sub_message(message)
+            return await query.answer(
+                "❌ Join Channel First",
+                show_alert=True
+            )
 
-        await add_user(user_id)
+    # ===== AI CHAT =====
 
-        await log_message(
-            f"""
-🆕 New User
+    elif data == "ai_chat":
 
-👤 Name: {message.from_user.first_name}
-
-🆔 ID: {user_id}
-"""
+        buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "⬅️ BACK",
+                        callback_data="back_home"
+                    )
+                ]
+            ]
         )
+
+        await query.message.edit_text(
+            """
+🤖 Send Your Issue
+
+Example:
+Samsung A13 No Charging
+""",
+            reply_markup=buttons
+        )
+
+    # ===== HELP =====
+
+    elif data == "help":
+
+        buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "⬅️ BACK",
+                        callback_data="back_home"
+                    )
+                ]
+            ]
+        )
+
+        await query.message.edit_text(
+            """
+📚 Supported Issues
+
+• Charging
+• Dead
+• Restart
+• No Display
+• Short
+""",
+            reply_markup=buttons
+        )
+
+    # ===== SUPPORT =====
+
+    elif data == "support":
+
+        buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "⬅️ BACK",
+                        callback_data="back_home"
+                    )
+                ]
+            ]
+        )
+
+        await query.message.edit_text(
+            """
+🛠 Support
+
+Contact Admin:
+@yourusername
+""",
+            reply_markup=buttons
+        )
+
+    # ===== BACK =====
+
+    elif data == "back_home":
 
         buttons = InlineKeyboardMarkup(
             [
@@ -202,255 +317,50 @@ async def start_handler(client, message):
                     ),
 
                     InlineKeyboardButton(
-                        "🛠 SUPPORT",
-                        callback_data="support"
+                        "📚 HELP",
+                        callback_data="help"
                     )
                 ],
 
                 [
                     InlineKeyboardButton(
-                        "📚 HELP",
-                        callback_data="help"
+                        "🛠 SUPPORT",
+                        callback_data="support"
                     )
                 ]
             ]
         )
 
-        msg = await message.reply_text(
-            f"""
-👋 Hello {message.from_user.first_name}
-
-Welcome To Technician AI Bot
-
-✅ AI Troubleshooting
-✅ Charging Diagnosis
-✅ Support System
-✅ Smart Assistant
-""",
+        await query.message.edit_text(
+            "🏠 Home Menu",
             reply_markup=buttons
         )
 
-        await asyncio.sleep(AUTO_DELETE_TIME)
+    # ===== CHARGING FLOW =====
 
-        try:
-            await msg.delete()
-        except:
-            pass
+    elif data == "charge_yes":
 
-    except Exception as e:
-
-        print(f"Start Error: {e}")
-
-# ================= CALLBACKS =================
-
-@bot.on_callback_query()
-async def callbacks(client, query):
-
-    try:
-
-        data = query.data
-
-        # ===== CHECK SUB =====
-
-        if data == "checksub":
-
-            joined = await is_joined(
-                query.from_user.id
-            )
-
-            if joined:
-
-                return await query.message.edit_text(
-                    "✅ Subscription Verified!\n\nSend /start"
-                )
-
-            else:
-
-                return await query.answer(
-                    "❌ Join Channel First",
-                    show_alert=True
-                )
-
-        # ===== AI CHAT =====
-
-        elif data == "ai_chat":
-
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🔙 BACK",
-                            callback_data="back_home"
-                        )
-                    ]
-                ]
-            )
-
-            await query.message.edit_text(
-                """
-🤖 AI Chat Enabled
-
-Send Problem Like:
-
-• Samsung A13 No Charging
-• Dead Phone
-• Restart Issue
-• No Display
-""",
-                reply_markup=buttons
-            )
-
-        # ===== SUPPORT =====
-
-        elif data == "support":
-
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🔙 BACK",
-                            callback_data="back_home"
-                        )
-                    ]
-                ]
-            )
-
-            await query.message.edit_text(
-                """
-🛠 Support Section
-
-Contact Admin:
-@yourusername
-""",
-                reply_markup=buttons
-            )
-
-        # ===== HELP =====
-
-        elif data == "help":
-
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🔙 BACK",
-                            callback_data="back_home"
-                        )
-                    ]
-                ]
-            )
-
-            await query.message.edit_text(
-                """
-📚 Help Menu
-
-Send Issues Like:
-
-• No Charging
-• Dead
-• Short
-• Restart
-• No Boot
-""",
-                reply_markup=buttons
-            )
-
-        # ===== BACK =====
-
-        elif data == "back_home":
-
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🤖 AI CHAT",
-                            callback_data="ai_chat"
-                        ),
-
-                        InlineKeyboardButton(
-                            "🛠 SUPPORT",
-                            callback_data="support"
-                        )
-                    ],
-
-                    [
-                        InlineKeyboardButton(
-                            "📚 HELP",
-                            callback_data="help"
-                        )
-                    ]
-                ]
-            )
-
-            await query.message.edit_text(
-                """
-🏠 Home Menu
-""",
-                reply_markup=buttons
-            )
-
-        # ===== CHARGING FLOW =====
-
-        elif data == "charge_yes":
-
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "✅ OK",
-                            callback_data="battery_ok"
-                        ),
-
-                        InlineKeyboardButton(
-                            "❌ NOT OK",
-                            callback_data="battery_no"
-                        )
-                    ]
-                ]
-            )
-
-            await query.message.edit_text(
-                """
+        await query.message.edit_text(
+            """
 🔍 Step 2
 
 Battery Percentage Increasing Undo?
-""",
-                reply_markup=buttons
-            )
+"""
+        )
 
-        elif data == "charge_no":
+    elif data == "charge_no":
 
-            buttons = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "✅ DONE",
-                            callback_data="cc_done"
-                        )
-                    ]
-                ]
-            )
-
-            await query.message.edit_text(
-                """
+        await query.message.edit_text(
+            """
 🔍 Step 2
 
 Check CC Line Voltage
-""",
-                reply_markup=buttons
-            )
+"""
+        )
 
-    except Exception as e:
+# ================= AI =================
 
-        print(f"Callback Error: {e}")
-
-# ================= AI HANDLER =================
-
-@bot.on_message(
-    filters.private &
-    filters.text &
-    ~filters.command(["start"])
-)
+@bot.on_message(filters.private & filters.text & ~filters.command(["start"]))
 async def ai_handler(client, message):
 
     try:
@@ -463,25 +373,22 @@ async def ai_handler(client, message):
         joined = await is_joined(user_id)
 
         if not joined:
-
             return await force_sub_message(message)
 
-        text = (message.text or "").lower()
+        text = message.text.lower()
 
         await log_message(
             f"""
 💬 New Message
 
-👤 User: {message.from_user.first_name}
+👤 {message.from_user.first_name}
+🆔 {user_id}
 
-🆔 ID: {user_id}
-
-📩 Message:
-{text}
+📩 {text}
 """
         )
 
-        # ===== CHARGING ISSUE =====
+        # ===== CHARGING =====
 
         if "charging" in text:
 
@@ -489,19 +396,19 @@ async def ai_handler(client, message):
                 [
                     [
                         InlineKeyboardButton(
-                            "✅ YES",
+                            "YES",
                             callback_data="charge_yes"
                         ),
 
                         InlineKeyboardButton(
-                            "❌ NO",
+                            "NO",
                             callback_data="charge_no"
                         )
                     ]
                 ]
             )
 
-            msg = await message.reply_text(
+            await message.reply_text(
                 """
 🔍 Step 1
 
@@ -512,44 +419,38 @@ async def ai_handler(client, message):
 
         else:
 
-            msg = await message.reply_text(
+            await message.reply_text(
                 """
-🤖 AI Reply
+🤖 AI Learning Mode
 
-Currently Learning This Issue...
+Try Detailed Issue
 """
             )
 
-        await asyncio.sleep(AUTO_DELETE_TIME)
-
-        try:
-            await msg.delete()
-        except:
-            pass
-
     except Exception as e:
+        print(f"AI ERROR: {e}")
 
-        print(f"AI Handler Error: {e}")
+# ================= RUN =================
 
-# ================= WEB SERVER =================
-
-def run_web():
+def run_flask():
 
     app.run(
         host="0.0.0.0",
         port=8000
     )
 
-# ================= START =================
+async def main():
 
-if __name__ == "__main__":
+    threading.Thread(
+        target=run_flask
+    ).start()
 
-    web_thread = Thread(
-        target=run_web
-    )
-
-    web_thread.start()
+    await bot.start()
 
     print("Bot Started Successfully!")
 
-    bot.run()
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+
+    asyncio.run(main())
