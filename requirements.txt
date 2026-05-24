@@ -12,3 +12,4 @@ Pillow
 apscheduler
 certifi
 uvloop
+python-dotenv
